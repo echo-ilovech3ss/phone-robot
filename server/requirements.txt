@@ -1,0 +1,7 @@
+# Python >=3.11; direct dependency versions verified against PyPI.
+fastapi==0.141.1
+uvicorn==0.53.0
+anthropic==1.6.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+httpx==0.28.1

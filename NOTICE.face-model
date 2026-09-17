@@ -1,0 +1,45 @@
+Phone Robot optional local face-embedding model
+
+Artifact: android/app/src/main/assets/mobile_face_net.tflite
+Upstream repository: https://github.com/estebanuri/face_recognition
+Pinned revision: dbf9732725cf1ab6e06b412651bb4858b5dfe0df
+Download: https://raw.githubusercontent.com/estebanuri/face_recognition/dbf9732725cf1ab6e06b412651bb4858b5dfe0df/android/app/src/main/assets/mobile_face_net.tflite
+SHA256: b67366e085ec9f6c2afb05c10397a46edeb823367abaec77f64f5ce946ac2847
+Size: 5243108 bytes
+Local destination: app/src/main/assets/mobile_face_net.tflite (ignored by version control)
+Setup: python3 tools/fetch_face_model.py --acknowledge-model-license
+
+Source checks at the pinned revision:
+android/app/src/main/java/org/tensorflow/lite/examples/detection/DetectorActivity.java
+sets input size 112 and names mobile_face_net.tflite.
+android/app/src/main/java/org/tensorflow/lite/examples/detection/tflite/TFLiteObjectDetectionAPIModel.java
+specifies RGB float channels (channel - 128) / 128 and a 192-float output.
+Phone Robot checks [1,112,112,3] FLOAT32 input and [1,192] FLOAT32 output at runtime.
+It crops frontal faces, resizes to 112x112, and L2-normalizes embeddings for cosine matching.
+
+LICENSING LIMITATION
+The cited TensorFlow Java wrapper carries an Apache License 2.0 header,
+Copyright 2019 The TensorFlow Authors. This is evidence about that source file,
+NOT a license grant for the pretrained model weights or its training data.
+No top-level LICENSE, weight-specific license, or verified training-data rights
+were found in the pinned repository tree. The repository README alone does not
+establish permission to redistribute, commercialize, or otherwise use the weights.
+The downloader's acknowledgement flag records awareness of this uncertainty;
+it does not grant rights. Obtain permission or substitute a suitably licensed,
+compatible and validated model before redistribution or commercial deployment.
+The binary is intentionally not committed. This app is a private personal prototype.
+
+RUNTIME LIMITATIONS
+Face matching is an uncalibrated convenience feature, not security authentication.
+Photographs can spoof it; there is no liveness detection. Lighting, pose, aging,
+camera quality and demographic bias can cause false matches or missed matches.
+Cosine similarity must be at least 0.75 with a 0.10 margin over the next identity;
+these conservative starting values are not measured accuracy guarantees.
+Enrollment needs one sole frontal face at least 100x100 pixels, fully in frame,
+and a recent completed inference. Bounding boxes are not landmark-aligned.
+Only names and embeddings are stored in app-private no-backup storage; no photos
+are persisted or uploaded. Logical deletion rewrites the store; physical erasure
+of flash blocks cannot be guaranteed by an Android application.
+ML Kit face detection is bundled through com.google.mlkit:face-detection:16.1.7;
+its separate vendor terms apply. Camera and ML inference performance must be
+measured on the target Huawei Mate 10 Lite.
