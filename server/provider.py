@@ -1,15 +1,9 @@
-"""One stateless text request, no tools, no retries, no alternate providers."""
+"""Stateless text requests: OpenRouter (free tier default), OpenAI-compatible, or Anthropic."""
 
 import logging
 from typing import Protocol
 
-from anthropic import (
-    APIConnectionError,
-    APIStatusError,
-    APITimeoutError,
-    AsyncAnthropic,
-    RateLimitError,
-)
+import httpx
 
 from .config import Settings
 
@@ -35,22 +29,94 @@ class TextProvider(Protocol):
     async def respond(self, message: str) -> str:
         """Return conversational text, never executable actions."""
 
+    async def close(self) -> None:
+        """Release any client connections."""
+
 
 def silence_transport_logging() -> None:
-    # SDK debug mode may include request bodies. Stop these namespaces at a
-    # NullHandler even if ANTHROPIC_LOG or the root logger enables debug output.
     for name in ("anthropic", "httpx", "httpcore"):
         logger = logging.getLogger(name)
         logger.handlers = [logging.NullHandler()]
         logger.propagate = False
 
 
+class OpenAICompatibleProvider:
+    """Connects to OpenRouter (default with free models) or any OpenAI-compatible API."""
+
+    def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        key = settings.get_api_key()
+        if not key and not settings.is_local_provider:
+            raise ValueError("OPENROUTER_API_KEY or AI_API_KEY is required to start the provider")
+        silence_transport_logging()
+        self._model = settings.effective_model
+        self._base_url = str(settings.ai_base_url).rstrip("/")
+        headers = {
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/echo-ilovech3ss/phone-robot",
+            "X-Title": "Phone Robot",
+        }
+        if key:
+            headers["Authorization"] = f"Bearer {key}"
+        self._client = httpx.AsyncClient(
+            base_url=self._base_url,
+            headers=headers,
+            transport=transport,
+            timeout=httpx.Timeout(settings.robot_provider_timeout_seconds),
+        )
+
+    async def respond(self, message: str) -> str:
+        try:
+            response = await self._client.post(
+                "/chat/completions",
+                json={
+                    "model": self._model,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": message},
+                    ],
+                    "max_tokens": 256,
+                    "temperature": 0.7,
+                },
+            )
+        except httpx.TimeoutException:
+            raise TimeoutError("Provider deadline exceeded") from None
+        except httpx.NetworkError:
+            raise ProviderUnavailable() from None
+
+        if response.status_code == 429:
+            raise ProviderRateLimited() from None
+        if response.status_code != 200:
+            raise ProviderUnavailable() from None
+
+        try:
+            data = response.json()
+            choices = data.get("choices", [])
+            if not choices:
+                raise ProviderUnavailable() from None
+            reply = choices[0].get("message", {}).get("content", "").strip()
+            if not reply:
+                raise ProviderUnavailable() from None
+            return reply
+        except Exception:
+            raise ProviderUnavailable() from None
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+
 class AnthropicProvider:
     def __init__(self, settings: Settings) -> None:
         if settings.anthropic_api_key is None or not settings.anthropic_api_key.get_secret_value().strip():
             raise ValueError("ANTHROPIC_API_KEY is required to start the real provider")
+        from anthropic import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            AsyncAnthropic,
+            RateLimitError,
+        )
         silence_transport_logging()
-        self._model = settings.anthropic_model
+        self._model = settings.anthropic_model or "claude-3-haiku-20240307"
         self._client = AsyncAnthropic(
             api_key=settings.anthropic_api_key.get_secret_value(),
             base_url="https://api.anthropic.com",
@@ -59,6 +125,12 @@ class AnthropicProvider:
         )
 
     async def respond(self, message: str) -> str:
+        from anthropic import (
+            APIConnectionError,
+            APIStatusError,
+            APITimeoutError,
+            RateLimitError,
+        )
         try:
             result = await self._client.messages.create(
                 model=self._model,
@@ -76,3 +148,11 @@ class AnthropicProvider:
 
     async def close(self) -> None:
         await self._client.close()
+
+
+def create_provider(settings: Settings) -> TextProvider:
+    if settings.ai_provider == "anthropic" or (
+        settings.anthropic_api_key and not settings.openrouter_api_key and not settings.ai_api_key
+    ):
+        return AnthropicProvider(settings)
+    return OpenAICompatibleProvider(settings)

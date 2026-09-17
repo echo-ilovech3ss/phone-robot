@@ -13,7 +13,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .config import Settings
 from .guards import RequestGuards
-from .provider import AnthropicProvider, ProviderRateLimited, ProviderUnavailable, TextProvider
+from .provider import (
+    ProviderRateLimited,
+    ProviderUnavailable,
+    TextProvider,
+    create_provider,
+)
 
 logger = logging.getLogger(__name__)
 MAX_REPLY_CHARACTERS = 2000
@@ -50,7 +55,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        owned_provider = AnthropicProvider(config) if provider is None else None
+        owned_provider = create_provider(config) if provider is None else None
         app.state.provider = owned_provider if owned_provider is not None else provider
         try:
             yield
