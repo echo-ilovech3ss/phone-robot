@@ -9,10 +9,10 @@ class Settings(BaseSettings):
         frozen=True, extra="ignore", hide_input_in_errors=True,
     )
 
-    ai_provider: str = Field(default="openrouter", description="openrouter, openai_compatible, or anthropic")
-    openrouter_api_key: SecretStr | None = None
+    ai_provider: str = Field(default="openai_compatible", description="openai_compatible, openrouter, or anthropic")
     ai_api_key: SecretStr | None = None
-    ai_model: str = Field(default="meta-llama/llama-3.3-70b-instruct:free", min_length=1, max_length=200)
+    openrouter_api_key: SecretStr | None = None
+    ai_model: str | None = None
     ai_base_url: str = Field(default="https://openrouter.ai/api/v1", min_length=1, max_length=500)
 
     anthropic_api_key: SecretStr | None = None
@@ -38,9 +38,10 @@ class Settings(BaseSettings):
 
     @property
     def effective_model(self) -> str:
-        if self.ai_provider == "anthropic" and self.anthropic_model:
-            return self.anthropic_model
-        return self.ai_model
+        model = self.anthropic_model if self.ai_provider == "anthropic" and self.anthropic_model else (self.ai_model or self.anthropic_model)
+        if not model:
+            raise ValueError("AI_MODEL (or ANTHROPIC_MODEL) is required for the text provider")
+        return model
 
     @field_validator("robot_api_token")
     @classmethod
@@ -52,7 +53,7 @@ class Settings(BaseSettings):
 
     @field_validator("ai_model", "robot_host", "ai_base_url")
     @classmethod
-    def reject_blank(cls, value: str) -> str:
-        if not value.strip() or value != value.strip():
+    def reject_blank(cls, value: str | None) -> str | None:
+        if value is not None and (not value.strip() or value != value.strip()):
             raise ValueError("Configuration value must be nonblank without surrounding whitespace")
         return value

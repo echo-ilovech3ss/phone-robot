@@ -46,7 +46,7 @@ class OpenAICompatibleProvider:
     def __init__(self, settings: Settings, transport: httpx.AsyncBaseTransport | None = None) -> None:
         key = settings.get_api_key()
         if not key and not settings.is_local_provider:
-            raise ValueError("OPENROUTER_API_KEY or AI_API_KEY is required to start the provider")
+            raise ValueError("AI_API_KEY (or OPENROUTER_API_KEY) is required to start the provider")
         silence_transport_logging()
         self._model = settings.effective_model
         self._base_url = str(settings.ai_base_url).rstrip("/")

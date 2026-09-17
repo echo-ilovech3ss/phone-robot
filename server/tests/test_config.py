@@ -19,15 +19,21 @@ def test_model_must_be_nonblank():
 
 
 def test_openrouter_refuses_missing_credentials_before_network():
-    config = Settings(robot_api_token="x" * 32)
-    with pytest.raises(ValueError, match="OPENROUTER_API_KEY"):
+    config = Settings(ai_model="test-model", robot_api_token="x" * 32)
+    with pytest.raises(ValueError, match="AI_API_KEY"):
+        OpenAICompatibleProvider(config)
+
+
+def test_provider_refuses_missing_model():
+    config = Settings(ai_api_key="sk-test", robot_api_token="x" * 32)
+    with pytest.raises(ValueError, match="AI_MODEL"):
         OpenAICompatibleProvider(config)
 
 
 def test_local_provider_allows_no_credentials():
-    config = Settings(ai_base_url="http://127.0.0.1:11434/v1", robot_api_token="x" * 32)
+    config = Settings(ai_base_url="http://127.0.0.1:11434/v1", ai_model="llama3.2", robot_api_token="x" * 32)
     provider = OpenAICompatibleProvider(config)
-    assert provider._model == "meta-llama/llama-3.3-70b-instruct:free"
+    assert provider._model == "llama3.2"
 
 
 def test_anthropic_provider_refuses_missing_credentials():
@@ -37,13 +43,14 @@ def test_anthropic_provider_refuses_missing_credentials():
 
 
 def test_create_provider_dispatches_correctly():
-    openrouter_config = Settings(openrouter_api_key="sk-or-v1-test", robot_api_token="x" * 32)
+    openrouter_config = Settings(openrouter_api_key="sk-or-v1-test", ai_model="test-model", robot_api_token="x" * 32)
     p1 = create_provider(openrouter_config)
     assert isinstance(p1, OpenAICompatibleProvider)
 
     anthropic_config = Settings(ai_provider="anthropic", anthropic_api_key="sk-ant-test", anthropic_model="claude-3-haiku-20240307", robot_api_token="x" * 32)
     p2 = create_provider(anthropic_config)
     assert isinstance(p2, AnthropicProvider)
+
 
 @pytest.mark.asyncio
 async def test_openai_compatible_provider_success():
@@ -54,7 +61,8 @@ async def test_openai_compatible_provider_success():
             200,
             json={"choices": [{"message": {"content": "I am a friendly phone robot."}}]},
         )
-    config = Settings(openrouter_api_key="test-key", robot_api_token="x" * 32)
+
+    config = Settings(openrouter_api_key="test-key", ai_model="test-model", robot_api_token="x" * 32)
     provider = OpenAICompatibleProvider(config, transport=httpx.MockTransport(handler))
     reply = await provider.respond("Hi!")
     assert reply == "I am a friendly phone robot."
@@ -66,17 +74,19 @@ async def test_openai_compatible_provider_rate_limited():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(429, json={"error": "rate limited"})
 
-    config = Settings(openrouter_api_key="test-key", robot_api_token="x" * 32)
+    config = Settings(openrouter_api_key="test-key", ai_model="test-model", robot_api_token="x" * 32)
     provider = OpenAICompatibleProvider(config, transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderRateLimited):
         await provider.respond("Hi!")
     await provider.close()
+
+
 @pytest.mark.asyncio
 async def test_openai_compatible_provider_error_and_empty_choices():
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(500, json={"error": "server error"})
 
-    config = Settings(openrouter_api_key="test-key", robot_api_token="x" * 32)
+    config = Settings(openrouter_api_key="test-key", ai_model="test-model", robot_api_token="x" * 32)
     provider = OpenAICompatibleProvider(config, transport=httpx.MockTransport(handler))
     with pytest.raises(ProviderUnavailable):
         await provider.respond("Hi!")
